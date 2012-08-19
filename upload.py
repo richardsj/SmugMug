@@ -96,8 +96,9 @@ if __name__ == "__main__":
             break
 
     if album_id is None:
-        print "That album does not exist"
-        sys.exit(1)
+        # Create the album
+        new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": "false", "FriendEdit": "false", "Public": "false", "Title": album_name})
+        album_id = new_album["id"]
 
     for filename in sys.argv[2:]:
         data = open(filename, "rb").read()
