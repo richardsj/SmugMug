@@ -4,7 +4,7 @@
 Requirements: Python 2.6 or simplejson from http://pypi.python.org/pypi/simplejson
 """
 
-API_VERSION="1.2.0"
+API_VERSION="1.2.2"
 API_URL="https://api.smugmug.com/hack/json/1.2.0/"
 UPLOAD_URL="http://upload.smugmug.com/photos/xmlrawadd.mg"
 
@@ -82,12 +82,19 @@ if __name__ == "__main__":
     except:
         import simplejson as json
 
-    if len(sys.argv) < 3:
-        print "Usage:"
-        print "  upload.py  album  picture1  [picture2  [...]]"
-        sys.exit(0)
+    # Parse the command line
+    import argparse
+    argparser = argparse.ArgumentParser(description="Bulk upload photos to SmugMug.")
+    argparser.add_argument("album", help="Name of album to upload to.  If the album does not exist, it will be created.")
+    argparser.add_argument("photos", nargs="+", help="Space separated list of photos to upload.")
 
-    album_name = sys.argv[1]
+    args = argparser.parse_args()
+
+    if not args.album and not args.photos:
+        print argparser.usage
+        sys.exit(1)
+
+    album_name = args.album
     su_cookie = None
 
     config = parse_config()
@@ -105,9 +112,9 @@ if __name__ == "__main__":
     if album_id is None:
         # Create the album
         new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": str(config.getboolean("Albums", "family edit")), "FriendEdit": str(config.getboolean("Albums", "friends edit")), "Public": str(config.getboolean("Albums", "public")), "Title": album_name})
-        album_id = new_album["Id"]
+        album_id = new_album["Album"]["id"]
 
-    for filename in sys.argv[2:]:
+    for filename in args.photos:
         data = open(filename, "rb").read()
         print "Uploading " + filename
 
