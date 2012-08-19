@@ -41,7 +41,8 @@ def safe_geturl(request):
                 match = re.search("(_su=\S+);", meta_info["set-cookie"])
                 if match and match.group(1) != "_su=deleted":
                     su_cookie = match.group(1)
-            if result["stat"] != "ok":
+            # Code 15 = list empty (which is okay)
+            if result["stat"] != "ok" and result["code"] != 15:
                 raise Exception("Bad result code")
             return result
         except:
@@ -64,7 +65,7 @@ def safe_geturl(request):
 def smugmug_request(method, params):
     global su_cookie
 
-    paramstrings = [urllib.quote(key) + "=" + urllib.quote(params[key]) for key in params]
+    paramstrings = [urllib.quote(key) + "=" + urllib.quote(str(params[key])) for key in params]
     paramstrings += ["method=" + method]
 
     url = urlparse.urljoin(API_URL, "?" + "&".join(paramstrings))
@@ -98,6 +99,9 @@ if __name__ == "__main__":
         print argparser.usage
         sys.exit(1)
 
+    # Remove duplicates from the command line
+    args.photos = set(args.photos)
+
     album_name = args.album
     su_cookie = None
 
@@ -111,6 +115,11 @@ if __name__ == "__main__":
     for album in result["Albums"]:
         if album["Title"] == album_name:
             album_id = album["id"]
+            album_data = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album_id, "AlbumKey": album["Key"]})
+            if album_data["stat"] == "ok":
+                image_list = album_data["Images"]
+            else:
+                image_list = []
             break
 
     if album_id is None:
@@ -118,12 +127,31 @@ if __name__ == "__main__":
         # Create the album
         new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": str(config.getboolean("Albums", "family edit")), "FriendEdit": str(config.getboolean("Albums", "friends edit")), "Public": str(config.getboolean("Albums", "public")), "Title": album_name})
         album_id = new_album["Album"]["id"]
+        image_list = []
 
+    # Loop through the provided objects
     for filename in args.photos:
-        data = open(filename, "rb").read()
         print "Uploading " + filename
 
-        upload_request = urllib2.Request(UPLOAD_URL, data, { "Content-Length": len(data), "Content-MD5": hashlib.md5(data).hexdigest(), "Content-Type": "none", "X-Smug-SessionID": session, "X-Smug-Version": API_VERSION, "X-Smug-ResponseType": "JSON", "X-Smug-AlbumID": album_id, "X-Smug-FileName": os.path.basename(filename) })
+        # Open the file and produce an MD5 hash
+        data = open(filename, "rb").read()
+        upload_md5 = hashlib.md5(data).hexdigest()
+
+        # Check to see if the hash already exists.
+        md5_match = False
+        for image in image_list:
+            result = smugmug_request("smugmug.images.getInfo", {"SessionID": session, "ImageID": image["id"], "ImageKey": image["Key"]})
+            if upload_md5 == result["Image"]["MD5Sum"]:
+                md5_match = True
+                break
+
+        # The object looks like it's already been uploaded to this album.  Next!
+        if md5_match:
+            logging.warn("Image already appears to exist.  Skipping")
+            continue
+
+        # Upload the image
+        upload_request = urllib2.Request(UPLOAD_URL, data, { "Content-Length": len(data), "Content-MD5": upload_md5, "Content-Type": "none", "X-Smug-SessionID": session, "X-Smug-Version": API_VERSION, "X-Smug-ResponseType": "JSON", "X-Smug-AlbumID": album_id, "X-Smug-FileName": os.path.basename(filename) })
 
         result = safe_geturl(upload_request)
         if result["stat"] == "ok":
