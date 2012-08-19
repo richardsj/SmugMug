@@ -16,6 +16,14 @@ import urlparse
 import hashlib
 import traceback
 import os
+import logging
+import ConfigParser
+import argparse
+
+try:
+    import json
+except:
+    import simplejson as json
 
 def safe_geturl(request):
     global su_cookie
@@ -68,7 +76,6 @@ def smugmug_request(method, params):
     return safe_geturl(request)
 
 def parse_config():
-    import ConfigParser
 
     config = ConfigParser.ConfigParser()
 
@@ -77,13 +84,10 @@ def parse_config():
     return config
 
 if __name__ == "__main__":
-    try:
-        import json
-    except:
-        import simplejson as json
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
 
     # Parse the command line
-    import argparse
     argparser = argparse.ArgumentParser(description="Bulk upload photos to SmugMug.")
     argparser.add_argument("album", help="Name of album to upload to.  If the album does not exist, it will be created.")
     argparser.add_argument("photos", nargs="+", help="Space separated list of photos to upload.")
@@ -110,6 +114,7 @@ if __name__ == "__main__":
             break
 
     if album_id is None:
+        logging.info("""Album, "%s" was not found.  Creating.""" % album_name)
         # Create the album
         new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": str(config.getboolean("Albums", "family edit")), "FriendEdit": str(config.getboolean("Albums", "friends edit")), "Public": str(config.getboolean("Albums", "public")), "Title": album_name})
         album_id = new_album["Album"]["id"]
