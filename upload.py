@@ -4,10 +4,6 @@
 Requirements: Python 2.6 or simplejson from http://pypi.python.org/pypi/simplejson
 """
 
-EMAIL="..."
-PASSWORD="..."
-
-APIKEY="..."
 API_VERSION="1.2.0"
 API_URL="https://api.smugmug.com/hack/json/1.2.0/"
 UPLOAD_URL="http://upload.smugmug.com/photos/xmlrawadd.mg"
@@ -71,6 +67,15 @@ def smugmug_request(method, params):
 
     return safe_geturl(request)
 
+def parse_config():
+    import ConfigParser
+
+    config = ConfigParser.ConfigParser()
+
+    config.read(os.path.join(os.path.dirname(sys.argv[0]), "smugup.cfg"))
+    
+    return config
+
 if __name__ == "__main__":
     try:
         import json
@@ -85,7 +90,9 @@ if __name__ == "__main__":
     album_name = sys.argv[1]
     su_cookie = None
 
-    result = smugmug_request("smugmug.login.withPassword", {"APIKey": APIKEY, "EmailAddress": EMAIL, "Password": PASSWORD})
+    config = parse_config()
+
+    result = smugmug_request("smugmug.login.withPassword", {"APIKey": config.get("SmugMug", "api key"), "EmailAddress": config.get("SmugMug", "email"), "Password": config.get("SmugMug", "password")})
     session = result["Login"]["Session"]["id"]
 
     result = smugmug_request("smugmug.albums.get", {"SessionID" : session})
@@ -97,7 +104,7 @@ if __name__ == "__main__":
 
     if album_id is None:
         # Create the album
-        new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": "false", "FriendEdit": "false", "Public": "false", "Title": album_name})
+        new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": config.getboolean("Albums", "family edit"), "FriendEdit": config.getboolean("Albums", "friends edit"), "Public": config.getboolean("Albums", "public"), "Title": album_name})
         album_id = new_album["id"]
 
     for filename in sys.argv[2:]:
