@@ -14,7 +14,6 @@ import urllib
 import urllib2
 import urlparse
 import hashlib
-import traceback
 import os
 import logging
 import ConfigParser
@@ -47,19 +46,16 @@ def safe_geturl(request):
             return result
         except:
             if x < 4:
-                print "  ... failed, retrying"
+                logging.warn("Failed; retrying.")
             else:
-                print "  ... failed, giving up"
-                print "  Request was:"
-                print "  " + request.get_full_url()
+                logging.warn("Failed; giving up.")
+                logging.debug("Request: %s" % request.get_full_url())
 
                 try:
-                    print "  Response was:"
-                    print response
+                    logging.debug("Response was: %s" % response)
                 except:
                     pass
 
-                traceback.print_exc()
                 return result
 
 def smugmug_request(method, params):
@@ -77,7 +73,6 @@ def smugmug_request(method, params):
     return safe_geturl(request)
 
 def parse_config():
-
     config = ConfigParser.ConfigParser()
 
     config.read(os.path.join(os.path.dirname(sys.argv[0]), "smugup.cfg"))
@@ -131,7 +126,7 @@ if __name__ == "__main__":
 
     # Loop through the provided objects
     for filename in args.photos:
-        print "Uploading " + filename
+        logging.info("Uploading %s" % filename)
 
         # Open the file and produce an MD5 hash
         data = open(filename, "rb").read()
@@ -155,8 +150,10 @@ if __name__ == "__main__":
 
         result = safe_geturl(upload_request)
         if result["stat"] == "ok":
-            print "  ... successful"
+            logging.info("Successful")
+        else:
+            logging.error("There was a problem uploading this object to SmugMug.")
 
-    print "Done"
+    logging.info("Complete")
 
     sys.exit(0)
