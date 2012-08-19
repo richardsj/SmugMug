@@ -40,9 +40,11 @@ def safe_geturl(request):
                 match = re.search("(_su=\S+);", meta_info["set-cookie"])
                 if match and match.group(1) != "_su=deleted":
                     su_cookie = match.group(1)
+
             # Code 15 = list empty (which is okay)
             if result["stat"] != "ok" and result["code"] != 15:
                 raise Exception("Bad result code")
+
             return result
         except:
             if x < 4:
@@ -110,7 +112,9 @@ if __name__ == "__main__":
     for album in result["Albums"]:
         if album["Title"] == album_name:
             album_id = album["id"]
+
             album_data = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album_id, "AlbumKey": album["Key"]})
+
             if album_data["stat"] == "ok":
                 image_list = album_data["Images"]
             else:
