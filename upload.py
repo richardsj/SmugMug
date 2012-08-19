@@ -104,8 +104,8 @@ if __name__ == "__main__":
 
     if album_id is None:
         # Create the album
-        new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": config.getboolean("Albums", "family edit"), "FriendEdit": config.getboolean("Albums", "friends edit"), "Public": config.getboolean("Albums", "public"), "Title": album_name})
-        album_id = new_album["id"]
+        new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": str(config.getboolean("Albums", "family edit")), "FriendEdit": str(config.getboolean("Albums", "friends edit")), "Public": str(config.getboolean("Albums", "public")), "Title": album_name})
+        album_id = new_album["Id"]
 
     for filename in sys.argv[2:]:
         data = open(filename, "rb").read()
