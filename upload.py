@@ -109,16 +109,20 @@ if __name__ == "__main__":
 
     result = smugmug_request("smugmug.albums.get", {"SessionID" : session})
     album_id = None
+    hashes = []
     for album in result["Albums"]:
         if album["Title"] == album_name:
             album_id = album["id"]
 
             album_data = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album_id, "AlbumKey": album["Key"]})
 
+            # Produce a list of MD5 hashes for existing images online
             if album_data["stat"] == "ok":
-                image_list = album_data["Images"]
-            else:
-                image_list = []
+                logging.info("Retrieving existing image hashes")
+                for image in album_data["Images"]:
+                    result = smugmug_request("smugmug.images.getInfo", {"SessionID": session, "ImageID": image["id"], "ImageKey": image["Key"]})
+                    hashes.append(result["Image"]["MD5Sum"])
+
             break
 
     if album_id is None:
@@ -126,9 +130,7 @@ if __name__ == "__main__":
         # Create the album
         new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": str(config.getboolean("Albums", "family edit")), "FriendEdit": str(config.getboolean("Albums", "friends edit")), "Public": str(config.getboolean("Albums", "public")), "Title": album_name})
         album_id = new_album["Album"]["id"]
-        image_list = []
 
-    # Loop through the provided objects
     for filename in args.photos:
         logging.info("Uploading %s" % filename)
 
@@ -136,16 +138,8 @@ if __name__ == "__main__":
         data = open(filename, "rb").read()
         upload_md5 = hashlib.md5(data).hexdigest()
 
-        # Check to see if the hash already exists.
-        md5_match = False
-        for image in image_list:
-            result = smugmug_request("smugmug.images.getInfo", {"SessionID": session, "ImageID": image["id"], "ImageKey": image["Key"]})
-            if upload_md5 == result["Image"]["MD5Sum"]:
-                md5_match = True
-                break
-
-        # The object looks like it's already been uploaded to this album.  Next!
-        if md5_match:
+        # Check to see if the hash already exists online.
+        if upload_md5 in hashes:
             logging.warn("Image already appears to exist.  Skipping")
             continue
 
