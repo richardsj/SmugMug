@@ -27,7 +27,7 @@ except:
 def safe_geturl(request):
     global su_cookie
 
-    # Try up to three times
+    # Try up to five times
     for x in range(5):
         try:
             response_obj = urllib2.urlopen(request)
