@@ -77,7 +77,7 @@ def smugmug_request(method, params):
 def parse_config():
     config = ConfigParser.ConfigParser()
 
-    config.read(os.path.join(os.path.dirname(sys.argv[0]), "smugup.cfg"))
+    config.read(os.path.join(os.path.dirname(sys.argv[0]), "smugmug.cfg"))
     
     return config
 
