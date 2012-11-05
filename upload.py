@@ -6,7 +6,7 @@ Requirements: Python 2.6 or simplejson from http://pypi.python.org/pypi/simplejs
 
 API_VERSION="1.2.2"
 API_URL="https://api.smugmug.com/hack/json/1.2.0/"
-UPLOAD_URL="http://upload.smugmug.com/photos/xmlrawadd.mg"
+UPLOAD_URL="http://upload.smugmug.com/"
 
 import sys
 import re
@@ -114,14 +114,12 @@ if __name__ == "__main__":
         if album["Title"] == album_name:
             album_id = album["id"]
 
-            album_data = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album_id, "AlbumKey": album["Key"]})
+            album_data = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album_id, "AlbumKey": album["Key"], "Heavy": "true"})
 
             # Produce a list of MD5 hashes for existing images online
             if album_data["stat"] == "ok":
-                logging.info("Retrieving existing image hashes")
-                for image in album_data["Images"]:
-                    result = smugmug_request("smugmug.images.getInfo", {"SessionID": session, "ImageID": image["id"], "ImageKey": image["Key"]})
-                    hashes.append(result["Image"]["MD5Sum"])
+                logging.info("Compiling existing image hashes")
+                hashes = [item["MD5Sum"] for item in album_data["Images"]]
 
             break
 
