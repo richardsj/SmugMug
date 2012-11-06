@@ -94,24 +94,30 @@ if __name__ == "__main__":
     albums = smugmug_request("smugmug.albums.get", {"SessionID": session})
     for album in albums["Albums"]:
         logging.info("""Checking album "%s" for duplicates""" % album["Title"])
+
         album_data = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album["id"], "AlbumKey": album["Key"], "Heavy": "true"})
 
         imageSet = {}
         # Generate a simple list of image IDs and checksums
-        for image in album_data["Images"]:
-            imageSet[image["MD5Sum"]] = image["id"]
+        try:
+            for image in album_data["Images"]:
+                imageSet[image["id"]] = image["MD5Sum"]
+        except KeyError:
+            logging.error("Album empty")
+            continue
 
         # Weed out the duplicates
-        prevKey = None
-        for key in sorted(imageSet):
+        prevHash = None
+        for id in sorted(imageSet, key=imageSet.get):
             # Check for a new key
-            if key == prevKey:
+            if imageSet[id] == prevHash:
                 # Key matches.  Image is a duplicate.  Delete it.
-                logging.warn("Duplicate found!  Deleting image ID %s" % imageSet[key])
+                logging.warn("Duplicate found!  Deleting image ID %s" % id)
 
-                #### result = smugmug_request("smugmug.images.delete", {"SessionID": session, "ImageID": imageSet[key]})
+                # Delete
+                result = smugmug_request("smugmug.images.delete", {"SessionID": session, "ImageID": id})
             else:
-                prevKey = key
+                prevHash = imageSet[id]
 
         del imageSet
  
