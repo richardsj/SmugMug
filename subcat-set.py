@@ -123,7 +123,7 @@ if __name__ == "__main__":
 
     albums = smugmug_request("smugmug.albums.get", {"SessionID": session})
     for album in albums["Albums"]:
-        if album["Title"].find(args.scanstring) >= 0 and not album.has_key("SubCategory"):
+        if album["Title"].find(args.scanstring) >= 0 and album["Category"]["Name"] == args.category and not album.has_key("SubCategory"):
             logging.info("""Moving album, "%s" to subcategory, "%s".""" % (album["Title"], args.subcategory))
             result = smugmug_request("smugmug.albums.changeSettings", {"SessionID": session, "AlbumID": album["id"], "SubCategoryID": subcat_id})
  
