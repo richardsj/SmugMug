@@ -5,7 +5,7 @@ Requirements: Python 2.6 or simplejson from http://pypi.python.org/pypi/simplejs
 """
  
 API_VERSION="1.2.2"
-API_URL="https://api.smugmug.com/service/api/json/%s/" % API_VERSION
+API_URL="https://api.smugmug.com/services/api/json/%s/" % API_VERSION
  
 import sys
 import re
