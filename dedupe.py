@@ -100,7 +100,7 @@ if __name__ == "__main__":
         imageSet = {}
         # Generate a simple list of image IDs and checksums
         try:
-            for image in album_data["Images"]:
+            for image in album_data["Album"]["Images"]:
                 imageSet[image["id"]] = image["MD5Sum"]
         except KeyError:
             logging.error("Album empty")

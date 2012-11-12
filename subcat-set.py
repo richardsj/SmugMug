@@ -106,14 +106,14 @@ if __name__ == "__main__":
     result = smugmug_request("smugmug.categories.get", {"SessionID" : session})
     cat_id = None
     for cat in result["Categories"]:
-        if cat["Title"] == args.category:
+        if cat["Name"] == args.category:
             cat_id = cat["id"]
             break
  
     subcats = smugmug_request("smugmug.subcategories.get", {"SessionID": session, "CategoryID": cat_id})
     subcat_id = None
     for subcat in subcats["SubCategories"]:
-        if subcat["Title"] == args.subcategory:
+        if subcat["Name"] == args.subcategory:
             subcat_id = subcat["id"]
             break
 

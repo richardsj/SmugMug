@@ -125,7 +125,7 @@ if __name__ == "__main__":
     for album in albums["Albums"]:
         if album["Title"] == args.album and album["Category"]["id"] == cat_id and album["SubCategory"]["id"] == subcat_id:
             photos = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album["id"], "AlbumKey": album["Key"], "Heavy": "true"})
-            for photo in photos["Images"]:
+            for photo in photos["Album"]["Images"]:
                 print photo["Date"]
                 continue
                 if photo["Date"].find("2011-") >= 0:

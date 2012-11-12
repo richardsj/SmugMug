@@ -107,7 +107,7 @@ if __name__ == "__main__":
         if str(album["id"]) == str(args.album):
             logging.info("Album found")
             photos = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album["id"], "AlbumKey": album["Key"], "Heavy": "true"})
-            for photo in photos["Images"]:
+            for photo in photos["Album"]["Images"]:
                 if photo["FileName"].find(args.prefix) >= 0:
                     logging.info("Deleting photo %s" % photo["id"])
                     temp = smugmug_request("smugmug.images.delete", {"SessionID": session, "ImageID": photo["id"]})
