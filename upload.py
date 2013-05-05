@@ -19,10 +19,38 @@ import logging
 import ConfigParser
 import argparse
 
+import tkFileDialog
+import tkMessageBox
+import Tkinter
+
 try:
     import json
 except:
     import simplejson as json
+
+def getAlbum():
+    root = Tkinter.Tk()
+
+    simpleTitle = Tkinter.Label(root)
+    simpleTitle["text"] = "Album name"
+    simpleTitle.pack()
+
+    inputBox = Tkinter.Entry(root)
+    inputBox.pack()
+
+    button = Tkinter.Button(root, text="Next", command=lambda: getText(root, inputBox))
+    button.pack()
+
+    Tkinter.mainloop()
+
+def getText(root, inputBox):
+    global album_name
+
+    album_name = inputBox.get().strip()
+    if album_name == "":
+        tkMessageBox.showerror("ERROR", "The album name must be provided.")
+    else:
+        root.destroy()
 
 def safe_geturl(request):
     global su_cookie
@@ -85,21 +113,18 @@ if __name__ == "__main__":
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
-    # Parse the command line
-    argparser = argparse.ArgumentParser(description="Bulk upload photos to SmugMug.")
-    argparser.add_argument("album", help="Name of album to upload to.  If the album does not exist, it will be created.")
-    argparser.add_argument("photos", nargs="+", help="Space separated list of photos to upload.")
+    getAlbum()
 
-    args = argparser.parse_args()
+    Tkinter.Tk().withdraw()
+    photos = tkFileDialog.askopenfilenames()
 
-    if not args.album and not args.photos:
-        print argparser.usage
+    if len(photos) == 0:
+        tkMessageBox.showerror("ERROR", "No photos to upload.")
         sys.exit(1)
 
     # Remove duplicates from the command line
-    args.photos = set(args.photos)
+    photos = set(photos)
 
-    album_name = args.album
     su_cookie = None
 
     config = parse_config()
@@ -129,7 +154,7 @@ if __name__ == "__main__":
         new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": str(config.getboolean("Albums", "family edit")), "FriendEdit": str(config.getboolean("Albums", "friends edit")), "Public": str(config.getboolean("Albums", "public")), "Title": album_name})
         album_id = new_album["Album"]["id"]
 
-    for filename in args.photos:
+    for filename in photos:
         logging.info("Uploading %s" % filename)
 
         # Open the file and produce an MD5 hash
