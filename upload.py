@@ -17,16 +17,27 @@ import hashlib
 import os
 import logging
 import ConfigParser
-import argparse
 
 import tkFileDialog
 import tkMessageBox
 import Tkinter
+import ttk
+
+import threading
 
 try:
     import json
 except:
     import simplejson as json
+
+class WidgetLogger(logging.Handler):
+    def __init__(self, widget):
+        logging.Handler.__init__(self)
+        self.widget = widget
+
+    def emit(self, record):
+        self.widget.insert(Tkinter.END, record)
+        self.widget.insert(Tkinter.END, "\n")
 
 def getAlbum():
     root = Tkinter.Tk()
@@ -40,6 +51,8 @@ def getAlbum():
 
     button = Tkinter.Button(root, text="Next", command=lambda: getText(root, inputBox))
     button.pack()
+
+    inputBox.focus_set()
 
     Tkinter.mainloop()
 
@@ -109,72 +122,112 @@ def parse_config():
     
     return config
 
+class Upload(threading.Thread):
+    def __init__(self, album_name, photos, progress):
+        threading.Thread.__init__(self)
+        self.album_name = album_name
+        self.photos = photos
+        self.progress = progress
+        self.start()
+
+    def run(self):
+        logging.info("Commencing uploads")
+
+        global su_cookie
+        su_cookie = None
+
+        config = parse_config()
+
+        result = smugmug_request("smugmug.login.withPassword", {"APIKey": config.get("SmugMug", "api key"), "EmailAddress": config.get("SmugMug", "email"), "Password": config.get("SmugMug", "password")})
+        session = result["Login"]["Session"]["id"]
+
+        result = smugmug_request("smugmug.albums.get", {"SessionID" : session})
+        album_id = None
+        hashes = []
+        for album in result["Albums"]:
+            if album["Title"] == self.album_name and album["Category"]["Name"] == "Other":
+                album_id = album["id"]
+
+                album_data = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album_id, "AlbumKey": album["Key"], "Heavy": "true"})
+
+                # Produce a list of MD5 hashes for existing images online
+                if album_data["stat"] == "ok":
+                    logging.info("Compiling existing image hashes")
+                    hashes = [item["MD5Sum"] for item in album_data["Album"]["Images"]]
+
+                break
+
+        if album_id is None:
+            logging.info("""Album, "%s" was not found.  Creating.""" % self.album_name)
+            # Create the album
+            new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": str(config.getboolean("Albums", "family edit")), "FriendEdit": str(config.getboolean("Albums", "friends edit")), "Public": str(config.getboolean("Albums", "public")), "Title": self.album_name})
+            album_id = new_album["Album"]["id"]
+
+        for filename in self.photos:
+            logging.info("Uploading %s" % filename)
+
+            # Open the file and produce an MD5 hash
+            data = open(filename, "rb").read()
+            upload_md5 = hashlib.md5(data).hexdigest()
+
+            # Check to see if the hash already exists online.
+            if upload_md5 in hashes:
+                logging.warn("Image already appears to exist.  Skipping")
+                self.progress.step()
+                continue
+
+            # Upload the image
+            upload_request = urllib2.Request(UPLOAD_URL, data, { "Content-Length": len(data), "Content-MD5": upload_md5, "Content-Type": "none", "X-Smug-SessionID": session, "X-Smug-Version": API_VERSION, "X-Smug-ResponseType": "JSON", "X-Smug-AlbumID": album_id, "X-Smug-FileName": os.path.basename(filename) })
+
+            result = safe_geturl(upload_request)
+            if result["stat"] == "ok":
+                logging.info("Successful")
+            else:
+                logging.error("There was a problem uploading this object to SmugMug.")
+
+            self.progress.step()
+
+        logging.info("Complete")
+
 if __name__ == "__main__":
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
+    # Get the album name
     getAlbum()
 
+    # Get the array of filenames
     Tkinter.Tk().withdraw()
     photos = tkFileDialog.askopenfilenames()
 
+    # Remove duplicates
+    photos = set(photos)
+
+    # Display an error if there are no files
     if len(photos) == 0:
         tkMessageBox.showerror("ERROR", "No photos to upload.")
         sys.exit(1)
 
-    # Remove duplicates from the command line
-    photos = set(photos)
+    # Initialise Tkinter window
+    root = Tkinter.Tk()
+    root.protocol("WM_DELETE_WINDOW", root.quit)
 
-    su_cookie = None
+    # Create our output Text widget
+    text = Tkinter.Text(root)
+    text.pack()
 
-    config = parse_config()
+    # Use a logger sub-class to write to the output window
+    logWindow = WidgetLogger(text)
+    logger.addHandler(logWindow)
 
-    result = smugmug_request("smugmug.login.withPassword", {"APIKey": config.get("SmugMug", "api key"), "EmailAddress": config.get("SmugMug", "email"), "Password": config.get("SmugMug", "password")})
-    session = result["Login"]["Session"]["id"]
+    # Attempt to display a progress bar
+    progress = ttk.Progressbar(root, length=text.winfo_reqwidth(), maximum=len(photos))
+    progress.pack()
 
-    result = smugmug_request("smugmug.albums.get", {"SessionID" : session})
-    album_id = None
-    hashes = []
-    for album in result["Albums"]:
-        if album["Title"] == album_name and album["Category"]["Name"] == "Other":
-            album_id = album["id"]
+    # Kick off the uploads in a thread
+    Upload(album_name, photos, progress)
 
-            album_data = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album_id, "AlbumKey": album["Key"], "Heavy": "true"})
-
-            # Produce a list of MD5 hashes for existing images online
-            if album_data["stat"] == "ok":
-                logging.info("Compiling existing image hashes")
-                hashes = [item["MD5Sum"] for item in album_data["Album"]["Images"]]
-
-            break
-
-    if album_id is None:
-        logging.info("""Album, "%s" was not found.  Creating.""" % album_name)
-        # Create the album
-        new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": str(config.getboolean("Albums", "family edit")), "FriendEdit": str(config.getboolean("Albums", "friends edit")), "Public": str(config.getboolean("Albums", "public")), "Title": album_name})
-        album_id = new_album["Album"]["id"]
-
-    for filename in photos:
-        logging.info("Uploading %s" % filename)
-
-        # Open the file and produce an MD5 hash
-        data = open(filename, "rb").read()
-        upload_md5 = hashlib.md5(data).hexdigest()
-
-        # Check to see if the hash already exists online.
-        if upload_md5 in hashes:
-            logging.warn("Image already appears to exist.  Skipping")
-            continue
-
-        # Upload the image
-        upload_request = urllib2.Request(UPLOAD_URL, data, { "Content-Length": len(data), "Content-MD5": upload_md5, "Content-Type": "none", "X-Smug-SessionID": session, "X-Smug-Version": API_VERSION, "X-Smug-ResponseType": "JSON", "X-Smug-AlbumID": album_id, "X-Smug-FileName": os.path.basename(filename) })
-
-        result = safe_geturl(upload_request)
-        if result["stat"] == "ok":
-            logging.info("Successful")
-        else:
-            logging.error("There was a problem uploading this object to SmugMug.")
-
-    logging.info("Complete")
+    # Do Tkinter window stuff
+    root.mainloop()
 
     sys.exit(0)
