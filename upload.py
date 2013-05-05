@@ -136,7 +136,7 @@ if __name__ == "__main__":
     album_id = None
     hashes = []
     for album in result["Albums"]:
-        if album["Title"] == album_name:
+        if album["Title"] == album_name and album["Category"]["Name"] == "Other":
             album_id = album["id"]
 
             album_data = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album_id, "AlbumKey": album["Key"], "Heavy": "true"})
@@ -144,7 +144,7 @@ if __name__ == "__main__":
             # Produce a list of MD5 hashes for existing images online
             if album_data["stat"] == "ok":
                 logging.info("Compiling existing image hashes")
-                hashes = [item["MD5Sum"] for item in album_data["Images"]]
+                hashes = [item["MD5Sum"] for item in album_data["Album"]["Images"]]
 
             break
 
