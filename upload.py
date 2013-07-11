@@ -4,10 +4,6 @@
 Requirements: Python 2.6 or simplejson from http://pypi.python.org/pypi/simplejson
 """
 
-API_VERSION="1.2.2"
-API_URL="https://api.smugmug.com/services/api/json/%s/" % API_VERSION
-UPLOAD_URL="http://upload.smugmug.com/"
-
 import sys
 import re
 import urllib
@@ -17,6 +13,7 @@ import hashlib
 import os
 import logging
 import ConfigParser
+import time
 
 import tkFileDialog
 import tkMessageBox
@@ -27,95 +24,109 @@ import threading
 
 try:
     import json
-except:
+except ImportError:
     import simplejson as json
 
 class WidgetLogger(logging.Handler):
-    def __init__(self, widget):
-        logging.Handler.__init__(self)
+    """A class to enable logging to a window."""
+    def __init__(self, widget, *args, **kwargs):
+        logging.Handler.__init__(self, *args, **kwargs)
         self.widget = widget
 
     def emit(self, record):
-        self.widget.insert(Tkinter.END, record)
+        self.widget.insert(Tkinter.END, time.strftime("%Y-%m-%d %H:%M:%S ") + record.getMessage())
         self.widget.insert(Tkinter.END, "\n")
 
-def getAlbum():
-    root = Tkinter.Tk()
+class Album:
+    """Class to handle an album."""
+    def __init__(self):
+        self.name = ""
 
-    simpleTitle = Tkinter.Label(root)
-    simpleTitle["text"] = "Album name"
-    simpleTitle.pack()
+    def ask_name(self):
+        """Function to ask for an album name from the user."""
+        window = Tkinter.Tk()
 
-    inputBox = Tkinter.Entry(root)
-    inputBox.pack()
+        simple_title = Tkinter.Label(window)
+        simple_title["text"] = "Album name"
+        simple_title.pack()
 
-    button = Tkinter.Button(root, text="Next", command=lambda: getText(root, inputBox))
-    button.pack()
+        input_box = Tkinter.Entry(window)
+        input_box.pack()
 
-    inputBox.focus_set()
+        button = Tkinter.Button(window, text="Next", command=lambda: self.get_text(window, input_box))
+        button.pack()
 
-    Tkinter.mainloop()
+        input_box.focus_set()
 
-def getText(root, inputBox):
-    global album_name
+        Tkinter.mainloop()
 
-    album_name = inputBox.get().strip()
-    if album_name == "":
-        tkMessageBox.showerror("ERROR", "The album name must be provided.")
-    else:
-        root.destroy()
+    def get_text(self, window, input_box):
+        """Function to get a clean input string from the user."""
+        self.name = input_box.get().strip()
+        if self.name == "":
+            tkMessageBox.showerror("ERROR", "The album name must be provided.")
+        else:
+            window.destroy()
 
-def safe_geturl(request):
-    global su_cookie
+class SmugmugAPIHandler:
+    """Class to handle requests to the SmugMug API"""
+    su_cookie = None
+    def __init__(self):
+        self.api_version = "1.2.2"
+        self.api_url = "https://api.smugmug.com/services/api/json/%s/" % self.api_version
+        self.upload_url = "http://upload.smugmug.com/"
 
-    # Try up to five times
-    for x in range(5):
-        try:
-            response_obj = urllib2.urlopen(request)
-            response = response_obj.read()
-            result = json.loads(response)
+    def safe_geturl(self, request):
+        """Fetch a URL with retries."""
 
-            # Test for presence of _su cookie and consume it
-            meta_info = response_obj.info()
-            if meta_info.has_key("set-cookie"):
-                match = re.search("(_su=\S+);", meta_info["set-cookie"])
-                if match and match.group(1) != "_su=deleted":
-                    su_cookie = match.group(1)
+        class SmugmugError(Exception):
+            """Simple Exception definition."""
+            pass
 
-            # Code 15 = list empty (which is okay)
-            if result["stat"] != "ok" and result["code"] != 15:
-                raise Exception("Bad result code")
+        # Try up to five times
+        for attempt in range(5):
+            try:
+                response_obj = urllib2.urlopen(request)
+                response = response_obj.read()
+                result = json.loads(response)
 
-            return result
-        except:
-            if x < 4:
-                logging.warn("Failed; retrying.")
-            else:
-                logging.warn("Failed; giving up.")
-                logging.debug("Request: %s" % request.get_full_url())
+                # Test for presence of _su cookie and consume it
+                meta_info = response_obj.info()
+                if meta_info.has_key("set-cookie"):
+                    match = re.search(r"(_su=\S+);", meta_info["set-cookie"])
+                    if match and match.group(1) != "_su=deleted":
+                        self.su_cookie = match.group(1)
 
-                try:
-                    logging.debug("Response was: %s" % response)
-                except:
-                    pass
+                # Code 15 = list empty (which is okay)
+                if result["stat"] != "ok" and result["code"] != 15:
+                    raise SmugmugError("API call failed")
 
                 return result
+            except SmugmugError:
+                if attempt < 4:
+                    logging.warn("Failed; retrying.")
+                else:
+                    logging.warn("Failed; giving up.")
+                    logging.debug("Request: %s", request.get_full_url())
+                    logging.debug("Response was: %s %s", response, "test")
 
-def smugmug_request(method, params):
-    global su_cookie
+                    return result
 
-    paramstrings = [urllib.quote(key) + "=" + urllib.quote(str(params[key])) for key in params]
-    paramstrings += ["method=" + method]
+    def call(self, method, params):
+        """Function to make an API call to SmugMug."""
+        paramstrings = [urllib.quote(key) + "=" + urllib.quote(str(params[key])) for key in params]
+        paramstrings += ["method=" + method]
 
-    url = urlparse.urljoin(API_URL, "?" + "&".join(paramstrings))
-    request = urllib2.Request(url)
+        url = urlparse.urljoin(self.api_url, "?" + "&".join(paramstrings))
+        request = urllib2.Request(url)
 
-    if su_cookie:
-        request.add_header("Cookie", su_cookie)
+        if self.su_cookie:
+            request.add_header("Cookie", self.su_cookie)
 
-    return safe_geturl(request)
+        return self.safe_geturl(request)
 
 def parse_config():
+    """Simple function to parse the configuation file."""
     config = ConfigParser.ConfigParser()
 
     config.read(os.path.join(os.path.dirname(sys.argv[0]), "smugmug.cfg"))
@@ -123,8 +134,9 @@ def parse_config():
     return config
 
 class Upload(threading.Thread):
+    """Class for uploading photos in a threaded manner."""
     def __init__(self, album_name, photos, progress):
-        threading.Thread.__init__(self)
+        super(Upload, self).__init__()
         self.album_name = album_name
         self.photos = photos
         self.progress = progress
@@ -133,22 +145,25 @@ class Upload(threading.Thread):
     def run(self):
         logging.info("Commencing uploads")
 
-        global su_cookie
-        su_cookie = None
-
         config = parse_config()
 
-        result = smugmug_request("smugmug.login.withPassword", {"APIKey": config.get("SmugMug", "api key"), "EmailAddress": config.get("SmugMug", "email"), "Password": config.get("SmugMug", "password")})
-        session = result["Login"]["Session"]["id"]
+        smugmug = SmugmugAPIHandler()
 
-        result = smugmug_request("smugmug.albums.get", {"SessionID" : session})
+        result = smugmug.call("smugmug.login.withPassword", {"APIKey": config.get("SmugMug", "api key"), "EmailAddress": config.get("SmugMug", "email"), "Password": config.get("SmugMug", "password")})
+        try:
+            session = result["Login"]["Session"]["id"]
+        except KeyError:
+            logging.error("Login failed.  Check credentials.")
+            return False
+
+        result = smugmug.call("smugmug.albums.get", {"SessionID" : session})
         album_id = None
         hashes = []
-        for album in result["Albums"]:
-            if album["Title"] == self.album_name and album["Category"]["Name"] == "Other":
-                album_id = album["id"]
+        for remote_album in result["Albums"]:
+            if remote_album["Title"] == self.album_name and remote_album["Category"]["Name"] == "Other":
+                album_id = remote_album["id"]
 
-                album_data = smugmug_request("smugmug.images.get", {"SessionID": session, "AlbumID": album_id, "AlbumKey": album["Key"], "Heavy": "true"})
+                album_data = smugmug.call("smugmug.images.get", {"SessionID": session, "AlbumID": album_id, "AlbumKey": remote_album["Key"], "Heavy": "true"})
 
                 # Produce a list of MD5 hashes for existing images online
                 if album_data["stat"] == "ok":
@@ -158,13 +173,13 @@ class Upload(threading.Thread):
                 break
 
         if album_id is None:
-            logging.info("""Album, "%s" was not found.  Creating.""" % self.album_name)
+            logging.info("""Album, "%s" was not found.  Creating.""", self.album_name)
             # Create the album
-            new_album = smugmug_request("smugmug.albums.create", {"SessionID": session, "FamilyEdit": str(config.getboolean("Albums", "family edit")), "FriendEdit": str(config.getboolean("Albums", "friends edit")), "Public": str(config.getboolean("Albums", "public")), "Title": self.album_name})
+            new_album = smugmug.call("smugmug.albums.create", {"SessionID": session, "FamilyEdit": str(config.getboolean("Albums", "family edit")), "FriendEdit": str(config.getboolean("Albums", "friends edit")), "Public": str(config.getboolean("Albums", "public")), "Title": self.album_name})
             album_id = new_album["Album"]["id"]
 
         for filename in self.photos:
-            logging.info("Uploading %s" % filename)
+            logging.info("Uploading %s", filename)
 
             # Open the file and produce an MD5 hash
             data = open(filename, "rb").read()
@@ -177,9 +192,9 @@ class Upload(threading.Thread):
                 continue
 
             # Upload the image
-            upload_request = urllib2.Request(UPLOAD_URL, data, { "Content-Length": len(data), "Content-MD5": upload_md5, "Content-Type": "none", "X-Smug-SessionID": session, "X-Smug-Version": API_VERSION, "X-Smug-ResponseType": "JSON", "X-Smug-AlbumID": album_id, "X-Smug-FileName": os.path.basename(filename) })
+            upload_request = urllib2.Request(smugmug.upload_url, data, { "Content-Length": len(data), "Content-MD5": upload_md5, "Content-Type": "none", "X-Smug-SessionID": session, "X-Smug-Version": smugmug.api_version, "X-Smug-ResponseType": "JSON", "X-Smug-AlbumID": album_id, "X-Smug-FileName": os.path.basename(filename) })
 
-            result = safe_geturl(upload_request)
+            result = smugmug.safe_geturl(upload_request)
             if result["stat"] == "ok":
                 logging.info("Successful")
             else:
@@ -189,22 +204,24 @@ class Upload(threading.Thread):
 
         logging.info("Complete")
 
-if __name__ == "__main__":
+def main():
+    """Function for main program loop"""
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
     # Get the album name
-    getAlbum()
+    album = Album()
+    album.ask_name()
 
     # Get the array of filenames
     Tkinter.Tk().withdraw()
-    photos = tkFileDialog.askopenfilenames()
+    photolist = tkFileDialog.askopenfilenames()
 
     # Remove duplicates
-    photos = set(photos)
+    photolist = set(photolist)
 
     # Display an error if there are no files
-    if len(photos) == 0:
+    if len(photolist) == 0:
         tkMessageBox.showerror("ERROR", "No photos to upload.")
         sys.exit(1)
 
@@ -217,17 +234,20 @@ if __name__ == "__main__":
     text.pack()
 
     # Use a logger sub-class to write to the output window
-    logWindow = WidgetLogger(text)
-    logger.addHandler(logWindow)
+    log_window = WidgetLogger(text)
+    logger.addHandler(log_window)
 
     # Attempt to display a progress bar
-    progress = ttk.Progressbar(root, length=text.winfo_reqwidth(), maximum=len(photos))
-    progress.pack()
+    progressbar = ttk.Progressbar(root, length=text.winfo_reqwidth(), maximum=len(photolist))
+    progressbar.pack()
 
     # Kick off the uploads in a thread
-    Upload(album_name, photos, progress)
+    Upload(album.name, photolist, progressbar)
 
     # Do Tkinter window stuff
     root.mainloop()
 
     sys.exit(0)
+
+if __name__ == "__main__":
+    main()
